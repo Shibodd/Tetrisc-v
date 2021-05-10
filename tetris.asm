@@ -2,6 +2,7 @@
 
 .data
 
+screen: .space 4096
 
 tetrominos: .byte 
 	0 0 0 0 # I
@@ -53,8 +54,15 @@ board: .space 240
 
 .text
 main:
-	jal ra, clear_board
-	jal ra, draw
+	call clear_board
+	
+
+	li t5, 0
+loop:
+	call draw
+	not t5, t5
+	j loop
+
 	jal zero, end
 	
 
@@ -66,10 +74,10 @@ clear_board:
 	la t0, board
 	addi t1, t0, 240
 	
-	li t3, 0xFF
+	li t3, 0xFFFFFFFF
 clear_board_loop:
-	sb t3, 0(t0)
-	addi t0, t0, 1
+	sw t3, 0(t0)
+	addi t0, t0, 4
 	bne t0, t1, clear_board_loop
 	jalr zero, ra, 0
 ## end clear_board
@@ -78,23 +86,39 @@ clear_board_loop:
 ## begin draw
 draw:
 	# Screen config: 32x32, base address: 0x10010000, 
-	# Play area 20x10 (board+40 -> board+240)
-	la t0, board
-	addi t0, t0, 40
-	addi t1, t0, 200
-	li t2, 0x10010000
-	li t3, -10
-draw_loop:
-	# do stuff
+	# Play area 20x10 (board+39 -> board+239)
 	
-	addi t0, t0, 1
-	blt t1, t0, draw_end
-	addi t3, t3, 1
+	la t0, board
+	addi t0, t0, 39 # t0 = board start address
+	addi t1, t0, 200 # t1 = board end address
+	la t2, screen # t2 = screen address
+	
+	addi t2, t2, 4 # offset right
+	
+	li t3, 10 # t3 = i = 0
+	
+draw_loop:
+	bgt t0, t1, draw_end
+	
+	bgt t3, zero, draw_body
+	#not t5, t5
+	addi t2, t2, 88
+	li t3, 10
+draw_body:
+	lb t4, 0(t0)
+	beq t4, zero, draw_nodraw
+	
+	## Draw code begin
+	sw t5, 0(t2)
+	#not t5, t5
+	## Draw code end
+	
+draw_nodraw:
 	addi t2, t2, 4
-	bne t3, zero, draw_loop
-	li t3, -10
-	addi t2, t2, 12
-	jal zero, draw_loop
+	addi t3, t3, -1
+
+	addi t0, t0, 1
+	j draw_loop
 	
 draw_end:
 	ret
