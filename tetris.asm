@@ -66,12 +66,12 @@ main:
 	
 	la a0, board # matrix addr
 	li a1, 10 # matrix width
-	li a2, 0 # draw box row
+	li a2, 4 # draw box row
 	li a3, 0 # draw box column
 	li a4, 10 # draw box width
 	li a5, 20 # draw box height
 	li a6, 0 # row
-	li a7, 1 # column
+	li a7, 0 # column
 	call blit
 	
 	jal zero, end
@@ -85,9 +85,8 @@ clear_board:
 	la t0, board
 	addi t1, t0, 240
 	
-	li t3, 0
 clear_board_loop:
-	sw t3, 0(t0)
+	sw zero, 0(t0)
 	addi t0, t0, 4
 	blt t0, t1, clear_board_loop
 	jr ra
@@ -99,7 +98,7 @@ clear_board_loop:
 # Colors are picked from colors based on the value in the matrix cell.
 # 
 # (in) a0: matrix base address
-# (in) a1: matrix width (in power of 2 form)
+# (in) a1: matrix width
 # draw box: portion of matrix to draw
 # (in) a2: draw box row
 # (in) a3: draw box column
@@ -117,18 +116,17 @@ blit:
 	add t0, t0, t1	# screen_addr += column_offset
 	
 	## a0 = matrix address
-	sll t1, a2, a1	# row_offset = row * matrix width
+	mul t1, a2, a1	# row_offset = draw box row * matrix width
 	add a0, a0, t1	# mat_addr += row_offset
-	add a0, a0, a3	# mat_addr += column
+	add a0, a0, a3	# mat_addr += draw box column
 	
 	## t1 = screen newline offset = (32 - a4) * 4
 	li t1, 32
 	sub t1, t1, a4
 	slli t1, t1, 2
 	
-	## a1 = matrix newline offset = (mat_width - draw box width) * 4
-	sub a1, a1, a4
-	slli a1, a1, 2
+	## a1 = matrix newline offset = (mat_width - draw box width)
+	sub a1, a1, a4 # mat_width -= draw box width
 	
 	# t2 = row index
 	# t3 = column index
