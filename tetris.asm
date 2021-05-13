@@ -10,38 +10,38 @@ tetromino_matrices: .byte
 	0 0 0 0
 	0 0 0 0
 	
-	1 0 0 0 # J
-	1 1 1 0
+	2 0 0 0 # J
+	2 2 2 0
 	0 0 0 0
 	0 0 0 0
 	
-	0 0 1 0 # L
-	1 1 1 0
+	0 0 3 0 # L
+	3 3 3 0
 	0 0 0 0
 	0 0 0 0
 	
-	0 1 1 0 # O
-	0 1 1 0
+	0 4 4 0 # O
+	0 4 4 0
 	0 0 0 0
 	0 0 0 0
 	
-	0 1 1 0 # S
-	1 1 0 0
+	0 5 5 0 # S
+	5 5 0 0
 	0 0 0 0
 	0 0 0 0
 	
-	0 1 0 0 # T
-	1 1 1 0
+	0 6 0 0 # T
+	6 6 6 0
 	0 0 0 0
 	0 0 0 0
 	
-	1 1 0 0 # Z
-	0 1 1 0
+	7 7 0 0 # Z
+	0 7 7 0
 	0 0 0 0
 	0 0 0 0
 
 colors: .word
-	0	 # Nothing
+	0x0F0F2F # Nothing
     	0x01eff2 # I
 	0x0001ec # J
 	0xf29f03 # L
@@ -62,7 +62,25 @@ falling_tetromino_c: .word 5
 
 .text
 main:
-	call clear_board
+	li a0, 0
+	li a1, 0
+	li a2, 32
+	li a3, 32
+	li a4, 0x0F0F2F
+	call draw_box
+	
+	li a0, -1 # (in) a0: row
+	li a1, 0 # (in) a1: column
+	li a2, 3 # (in) a2: draw box width
+	li a3, 3 # (in) a3: draw box height
+	li a4, 0 # (in) a4: draw box row
+	li a5, 0 # (in) a5: draw box column
+	la a6, tetromino_matrices # (in) a6: matrix address
+	li t0, 4
+	slli t0, t0, 4
+	add a6, a6, t0
+	li a7, 4 # (in) a7: matrix width
+	call blit
 	
 	jal zero, end
 
@@ -165,66 +183,93 @@ draw_box_row_loop_end:
 	jr ra
 ## end
 
-
 ## begin blit
-# Blits a portion of a matrix at a position on the screen.
-# Colors are picked from colors based on the value in the matrix cell.
-# 
-# row, column: position where to draw
+# Draws a portion of a matrix at a certain position.
+# Colors are picked from colors table, using the values in the matrix cells as indexes
 # (in) a0: row
 # (in) a1: column
-# draw box: portion of matrix to draw
-# (in) a2: draw box row
-# (in) a3: draw box column
-# (in) a4: draw box width
-# (in) a5: draw box height
-# source matrix info
-# (in) a6: matrix base address
+# (in) a2: draw box width
+# (in) a3: draw box height
+# (in) a4: draw box row
+# (in) a5: draw box column
+# (in) a6: matrix address
 # (in) a7: matrix width
-
 blit:
-	# t2 = row index
-	# t3 = column index
+	addi sp, sp, -36
+	sw ra, 0(sp)
+	sw s0, 4(sp)
+	sw s1, 8(sp)
+	sw s2, 12(sp)
+	sw s3, 16(sp)
+	sw s4, 20(sp)
+	sw s5, 24(sp)
+	sw s6, 32(sp)
 	
-	# for (t3 = 0; t3 < a5; ++t3)
-	li t2, 0
+	mv s0, a2 # s0 = dbx width
+	mv s1, a3 # s1 = dbx height
+	mv s2, a4 # s2 = dbx row
+	mv s3, a5 # s3 = dbx column
+	mv s4, a6 # s4 = mtx add
+	mv s5, a7 # s5 = mtx width
+	
+	call screen_address_at
+	mv s6, a0 # s6 = screen address
+	
+	mv a0, s0
+	call screen_newline_offset # a0 = screen newline offset
+	
+	# t0 = matrix address
+	mul t0, a7, a4 # mat addr = mat width * dbx row
+	add t0, t0, a5 # mat addr += dbx column
+	add t0, t0, s4
+	
+	# t1 = matrix newline offset
+	sub t1, s5, s0
+	
+	la t6, screen # t6 = screen min address
+
+	li t2, 0 # row = 0
 blit_row_loop:
-	bge t2, a5, blit_row_loop_end
+	bge t2, s1, blit_row_loop_end # if row > dbx height then goto row loop end
 	
-	# for (t4 = 0; t4 < a4; ++t4)
-	li t3, 0
-blit_column_loop:
-	bge t3, a4, blit_column_loop_end
+	li t3, 0 # column = 0
+blit_col_loop:
+	bge t3, s0, blit_col_loop_end # if column > dbx width then goto col loop end
 	
 	# Load the color
-	lb t4, 0(a6)
-	la t5, colors
-	slli t4, t4, 2
-	add t5, t5, t4
-	lw t4, 0(t5)
-	sw t4, 0(a0)
-
+	la t4, colors # t4 = colors
+	lb t5, 0(t0) # color index = matrix[t2, t3]
+	slli t5, t5, 2 # color offset = color index * 4
+	add t4, t4, t5 # t4 = colors + color_index
 	
-	addi a0, a0, 4 # screen draw address += 4
-	addi a6, a6, 1 # matrix read address += 1
-	addi t3, t3, 1 # ++col
-	j blit_column_loop
+	# Write the color
+	lw t4, 0(t4) # t4 = *t4
+	sw t4, 0(s6) # *s6 = t4
 	
-blit_column_loop_end:
-	addi t2, t2, 1 # ++row
-	add a0, a0, t1 # screen address += screen newline offset
-	add a6, a6, a7 # matrix address += matrix newline offset
+blit_col_loop_continue:
 	
+	addi t0, t0, 1 # matrix add++
+	addi s6, s6, 4 # screen add += 4
+	addi t3, t3, 1 # column++
+	j blit_col_loop
+blit_col_loop_end:
+	add t0, t0, t1 # matrix add += matrix newline offset
+	add s6, s6, a0 # screen add += screen newline offset
+	addi t2, t2, 1 # row ++
 	j blit_row_loop
 blit_row_loop_end:
-
 	lw ra, 0(sp)
 	lw s0, 4(sp)
-	addi sp, sp, 4
-
+	lw s1, 8(sp)
+	lw s2, 12(sp)
+	lw s3, 16(sp)
+	lw s4, 20(sp)
+	lw s5, 24(sp)
+	lw s6, 32(sp)
+	addi sp, sp, 36
+	
 	ret
+	
 ## end blit
-
-
 	
 end:
