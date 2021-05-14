@@ -54,12 +54,29 @@ board: .space 240
 
 matrix_rotation_temp: .space 16
 falling_tetromino_matrix: .space 16
-falling_tetromino_type: .byte 4
-falling_tetromino_r: .byte 2
-falling_tetromino_c: .byte 5
+falling_tetromino_type: .byte 0
+falling_tetromino_r: .byte 0
+falling_tetromino_c: .byte 0
 
 
 .text
+
+.eqv TETROMINO_SPAWN_R 2
+.eqv TETROMINO_SPAWN_C 4
+
+.eqv BACKGROUND_COLOR 0x0F0F2F
+.eqv SCREEN_BOARD_R 6 
+.eqv SCREEN_BOARD_C 11
+.eqv SCREEN_BOARD_BORDER_R 5
+.eqv SCREEN_BOARD_BORDER_C 10
+.eqv SCREEN_BOARD_BORDER_W 12
+.eqv SCREEN_BOARD_BORDER_H 22
+.eqv SCREEN_BOARD_BORDER_COLOR 0xAAAAAA
+
+
+
+
+
 ## begin main
 main:
 	# background color
@@ -67,21 +84,19 @@ main:
 	li a1, 0
 	li a2, 32
 	li a3, 32
-	li a4, 0x0F0F2F
+	li a4, BACKGROUND_COLOR
 	call draw_box
 	
 	#border
-	li a0, 5
-	li a1, 10
-	li a2, 12
-	li a3, 22
-	li a4, 0xAAAAAA
+	li a0, SCREEN_BOARD_BORDER_R
+	li a1, SCREEN_BOARD_BORDER_C
+	li a2, SCREEN_BOARD_BORDER_W
+	li a3, SCREEN_BOARD_BORDER_H
+	li a4, SCREEN_BOARD_BORDER_COLOR
 	call draw_box
-	
-	
+
 	call test
-	
-	
+
 	li a0, 0
 	li a7, 93
 	ecall 
@@ -93,37 +108,9 @@ test:
 	addi sp, sp, -8
 	sw ra, 0(sp)
 	sw s0, 4(sp)
-
-	# set falling tetromino type
-	la t0, falling_tetromino_type
-	li t1, 2
-	sb t1, 0(t0)
-	mv s0, t1 # s0 = tetromino type
 	
-	la a0, falling_tetromino_matrix
-	la a1, tetromino_matrices
-	mv t1, s0
-	addi t1, t1, -1
-	slli t1, t1, 4
-	add a1, a1, t1
-	li a2, 16
-	call memcpy
-
-	li a0, -1
-	call rotate_tetromino
-	
-	call get_tetromino_matrix_size
-	mv a2, a0 # (in) a2: draw box width
-	mv a3, a0 # (in) a3: draw box height
-	
-	li a0, 10 # (in) a0: row
-	li a1, 16 # (in) a1: column
-	li a4, 0 # (in) a4: draw box row
-	li a5, 0 # (in) a5: draw box column
-	la a6, falling_tetromino_matrix # (in) a6: matrix address
-	li a7, 4 # (in) a7: matrix width
-	call blit
-	
+	call spawn_tetromino
+	call draw_tetromino
 
 	lw ra, 0(sp)
 	lw s0, 4(sp)
@@ -131,6 +118,95 @@ test:
 	
 	ret
 ## end test
+
+
+## begin spawn_tetromino
+spawn_tetromino:
+	addi sp, sp, -4
+	sw ra, 0(sp)
+
+	li a0, 0
+	li a1, 7
+	li a7, 42
+	ecall # a0 = random int in range [0, 7)
+	addi a0, a0, 1 # a0 = random int in range [1, 7]
+	# a0 = tetromino type
+	
+	la t0, falling_tetromino_type
+	sb a0, 0(t0)
+	
+	mv t0, a0
+	
+	la a0, falling_tetromino_matrix # (in) a0: destination matrix address
+	la a1, tetromino_matrices # (in) a1: source matrix address
+	addi t0, t0, -1
+	slli t0, t0, 4 # offset = tetromino type * 16
+	add a1, a1, t0
+	li a2, 16 # (in) a2: bytes to copy
+	call memcpy
+	
+	la t0, falling_tetromino_r
+	li t1, TETROMINO_SPAWN_R
+	sb t1, 0(t0)
+	
+	la t0, falling_tetromino_c
+	li t1, TETROMINO_SPAWN_C
+	sb t1, 0(t0)
+	
+	lw ra, 0(sp)
+	addi sp, sp, 4
+	ret
+## end spawn_tetromino
+
+## draw_tetromino
+draw_tetromino:
+	addi sp, sp, -4
+	sw ra, 0(sp)
+
+	call get_tetromino_matrix_size
+	mv a2, a0 # (in) a2: draw box width
+	mv a3, a0 # (in) a3: draw box height
+	
+	lb a0, falling_tetromino_r # (in) a0: row
+	mv t0, a0 # store for later
+	addi a0, a0, SCREEN_BOARD_R
+	addi a0, a0, -3
+	
+	lb a1, falling_tetromino_c # (in) a1: column
+	addi a1, a1, SCREEN_BOARD_C
+	addi a1, a1, -1
+
+	li a4, 0 # (in) a4: draw box row
+	
+	# Top border overflow prevention
+	addi t0, t0, -3
+	bge t0, zero, draw_tetromino_no_overflow
+	add a3, a3, t0
+	neg t0, t0
+	add a0, a0, t0
+	add a4, a4, t0
+draw_tetromino_no_overflow:
+	li a5, 0 # (in) a5: draw box column
+	la a6, falling_tetromino_matrix # (in) a6: matrix address
+	li a7, 4 # (in) a7: matrix width
+	
+	call blit
+	
+	lw ra, 0(sp)
+	addi sp, sp, 4
+	ret
+## end draw_tetromino
+
+## begin update
+update:
+	lb t0, falling_tetromino_r
+	addi t0, t0, 1
+	la t1, falling_tetromino_r
+	sb t0, 0(t1)
+	ret
+
+## end update
+
 
 
 
@@ -145,7 +221,6 @@ get_tetromino_matrix_size:
 get_tetromino_matrix_size_typeI:
 	li a0, 4
 	ret
-	
 ## end get_tetromino_matrix_size
 
 
