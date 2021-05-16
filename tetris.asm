@@ -5,6 +5,11 @@
 screen: .space 4096
 
 tetromino_matrices: .byte 
+	0 0 0 0
+	0 0 0 0
+	0 0 0 0
+	0 0 0 0
+	
 	0 0 0 0 # I
 	1 1 1 1
 	0 0 0 0
@@ -41,7 +46,7 @@ tetromino_matrices: .byte
 	0 0 0 0
 
 colors: .word
-	0x0F0F2F # Nothing
+	0xFF00FF # Nothing
     	0x01eff2 # I
 	0x0001ec # J
 	0xf29f03 # L
@@ -94,30 +99,29 @@ main:
 	li a3, SCREEN_BOARD_BORDER_H
 	li a4, SCREEN_BOARD_BORDER_COLOR
 	call draw_box
-
-	call test
+	
+	call game
 
 	li a0, 0
 	li a7, 93
 	ecall 
 ## end main
 
-
-## begin test
-test:
-	addi sp, sp, -8
-	sw ra, 0(sp)
-	sw s0, 4(sp)
-	
+## begin game
+game:
 	call spawn_tetromino
 	call draw_tetromino
-
-	lw ra, 0(sp)
-	lw s0, 4(sp)
-	addi sp, sp, 8
+game_loop:
+	li a0, 500
+	li a7, 32
+	ecall
+	
+	call undraw_tetromino
+	call update
+	call draw_tetromino
+	j game_loop
 	
 	ret
-## end test
 
 
 ## begin spawn_tetromino
@@ -139,7 +143,6 @@ spawn_tetromino:
 	
 	la a0, falling_tetromino_matrix # (in) a0: destination matrix address
 	la a1, tetromino_matrices # (in) a1: source matrix address
-	addi t0, t0, -1
 	slli t0, t0, 4 # offset = tetromino type * 16
 	add a1, a1, t0
 	li a2, 16 # (in) a2: bytes to copy
@@ -158,34 +161,55 @@ spawn_tetromino:
 	ret
 ## end spawn_tetromino
 
-## draw_tetromino
-draw_tetromino:
-	addi sp, sp, -4
-	sw ra, 0(sp)
-
-	call get_tetromino_matrix_size
-	mv a2, a0 # (in) a2: draw box width
-	mv a3, a0 # (in) a3: draw box height
-	
+## begin tetromino_drawpos
+tetromino_get_drawpos:
 	lb a0, falling_tetromino_r # (in) a0: row
-	mv t0, a0 # store for later
 	addi a0, a0, SCREEN_BOARD_R
 	addi a0, a0, -3
 	
 	lb a1, falling_tetromino_c # (in) a1: column
 	addi a1, a1, SCREEN_BOARD_C
 	addi a1, a1, -1
+	ret
+## end tetromino_drawpos
+
+## begin tetromino_top_overflow
+# (out) a0: overflowing rows
+tetromino_top_overflow:
+	lb a0, falling_tetromino_r
+	addi a0, a0, -3
+	blt a0, zero, tetromino_top_overflow_yes
+	li a0, 0
+	ret
+tetromino_top_overflow_yes:
+	neg a0, a0
+	ret
+## end tetromino_top_overflow
+
+
+## begin draw_tetromino
+draw_tetromino:
+	addi sp, sp, -8
+	sw ra, 0(sp)
+	sw s0, 4(sp)
+	
+	call tetromino_top_overflow
+	mv s0, a0 # t0 = top overflow
+
+	call get_tetromino_matrix_size
+	mv a2, a0 # (in) a2: draw box width
+	mv a3, a0 # (in) a3: draw box height
+	
+	# (in) a0: row
+	# (in) a1: column
+	call tetromino_get_drawpos
 
 	li a4, 0 # (in) a4: draw box row
 	
-	# Top border overflow prevention
-	addi t0, t0, -3
-	bge t0, zero, draw_tetromino_no_overflow
-	add a3, a3, t0
-	neg t0, t0
-	add a0, a0, t0
-	add a4, a4, t0
-draw_tetromino_no_overflow:
+	add a0, a0, s0
+	add a4, a4, s0
+	sub a3, a3, s0
+
 	li a5, 0 # (in) a5: draw box column
 	la a6, falling_tetromino_matrix # (in) a6: matrix address
 	li a7, 4 # (in) a7: matrix width
@@ -193,9 +217,79 @@ draw_tetromino_no_overflow:
 	call blit
 	
 	lw ra, 0(sp)
-	addi sp, sp, 4
+	lw s0, 4(sp)
+	addi sp, sp, 8
 	ret
 ## end draw_tetromino
+
+## begin undraw_tetromino
+undraw_tetromino:
+	addi sp, sp, -24
+	sw ra, 0(sp)
+	sw s0, 4(sp)
+	sw s1, 8(sp)
+	sw s2, 12(sp)
+	sw s3, 16(sp)
+	sw s4, 20(sp)
+
+	call tetromino_top_overflow
+	mv s0, a0 # s0 = overflow amount
+
+	call get_tetromino_matrix_size
+	mv s1, a0 # s1 = matrix width
+	mv s2, a0 # s2 = matrix height
+	
+	call tetromino_get_drawpos
+	mv s3, a0 # s3 = r
+	mv s4, a1 # s4 = c
+	
+	# prevent top overflow
+	add s3, s3, s0 
+	sub s2, s2, s0
+
+	# draw background over tetromino
+	# (in) a0: row
+	# (in) a1: column
+	# (in) a2: width
+	# (in) a3: height
+	# (in) a4: color
+	mv a0, s3
+	mv a1, s4
+	mv a2, s1
+	mv a3, s2
+	li a4, BACKGROUND_COLOR
+	call draw_box
+	
+	# redraw board over tetromino
+	# (in) a0: row
+	# (in) a1: column
+	# (in) a2: draw box width
+	# (in) a3: draw box height
+	# (in) a4: draw box row
+	# (in) a5: draw box column
+	# (in) a6: matrix address
+	# (in) a7: matrix width
+	mv a0, s3
+	mv a1, s4
+	mv a2, s1
+	mv a3, s2
+	lb a4, falling_tetromino_r
+	lb a5, falling_tetromino_c
+	la a6, board
+	li a7, 10
+	call blit
+	
+	lw ra, 0(sp)
+	lw s0, 4(sp)
+	lw s1, 8(sp)
+	lw s2, 12(sp)
+	lw s3, 16(sp)
+	lw s4, 20(sp)
+	addi sp, sp, 24
+	
+	ret
+## end undraw_tetromino
+
 
 ## begin update
 update:
@@ -204,7 +298,6 @@ update:
 	la t1, falling_tetromino_r
 	sb t0, 0(t1)
 	ret
-
 ## end update
 
 

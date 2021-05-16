@@ -105,7 +105,7 @@ draw_box_row_loop_end:
 
 ## begin blit
 # Draws a portion of a matrix at a certain position.
-# Colors are picked from colors table, using the values in the matrix cells as indexes
+# Colors are picked from colors table, using the values in the matrix cells as indexes, or transparent if the value is 0.
 # (in) a0: row
 # (in) a1: column
 # (in) a2: draw box width
@@ -159,6 +159,10 @@ blit_col_loop:
 	# Load the color
 	la t4, colors # t4 = colors
 	lb t5, 0(t0) # color index = matrix[t2, t3]
+	
+	# Skip if zero
+	beq t5, zero, blit_col_loop_continue
+	
 	slli t5, t5, 2 # color offset = color index * 4
 	add t4, t4, t5 # t4 = colors + color_index
 	

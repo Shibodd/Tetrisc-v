@@ -29,4 +29,3 @@ square_matrix_index_at:
 	add a0, a0, a1 # index = row_offset + column
 	jr ra
 ## end square_matrix_index_at
-	
